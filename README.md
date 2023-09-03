@@ -7,7 +7,7 @@ https://yandex.ru/dev/webmaster/doc/dg/reference/host-query-analytics.html
 Скрипт работает на версии Python 3.10.12 и БД 10.6.12-MariaDB. На других не тестировал.
 
 Используемые модули:
-requests
+requests \n
 pandas
 pytz
 mariadb
