@@ -8,7 +8,6 @@ import sys
 timezone = pytz.timezone("Europe/Moscow")
 current_time = datetime.now(timezone)
 
-# Параметры API и базы данных
 api_url = 'https://api.webmaster.yandex.net/v4/user/123321123/hosts/https:site.ru:443/query-analytics/list'
 headers = {'Authorization': 'OAuth YOUR_OAUTH_TOKEN'}
 db_host = 'localhost'
@@ -16,20 +15,18 @@ db_port = 3306
 db_user = 'your_username'
 db_password = 'your_password'
 db_name = 'your_database'
-table_name = 'your_table'
+table_name = 'aggr'
 
-# Функция для выполнения запроса к API
 def api_request(url, headers, body):
     response = requests.post(url, headers=headers, json=body)
     if response.status_code != 200:
-        print(f"{current_time} - Код ответа сервера API: {response.status_code}")
+        print(f"{current_time} - {sys.argv[0]} - Ответ API: {response.status_code}")
         sys.exit()
     return response.json()
 
-# Функция для создания таблицы, если она не существует
 def create_table(cursor):
     cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ("
-                   "ID INT AUTO_INCREMENT PRIMARY KEY,"
+                   "URL VARCHAR(255),"
                    "DATE DATE,"
                    "QUERY VARCHAR(100),"
                    "POSITION DECIMAL(14, 2),"
@@ -37,13 +34,11 @@ def create_table(cursor):
                    "IMPRESSIONS DECIMAL(14, 2),"
                    "CLICKS DECIMAL(14, 2),"
                    "CTR DECIMAL(14, 2),"
-                   "CONSTRAINT unique_date_query UNIQUE (DATE, QUERY)"
+                   "CONSTRAINT unique_url_date_query UNIQUE (URL, DATE, QUERY)"
                    ")")
 
-# Функция для вставки данных в таблицу
 def insert_data(cursor, data):
     temp_data = []
-    
     for item in data['text_indicator_to_statistics']:
         QUERY = item['text_indicator']['value']
         for stat in item['statistics']:
@@ -53,7 +48,6 @@ def insert_data(cursor, data):
             CTR = 0.0
             IMPRESSIONS = 0.0
             POSITION = 0.0
-            
             if stat['field'] == 'DEMAND':
                 DEMAND = round(float(stat['value']), 2)
             elif stat['field'] == 'CLICKS':
@@ -64,8 +58,8 @@ def insert_data(cursor, data):
                 IMPRESSIONS = round(float(stat['value']), 2)
             elif stat['field'] == 'POSITION':
                 POSITION = round(float(stat['value']), 2)
-            
             temp_data.append({
+                'URL': add_url,
                 'DATE': DATE,
                 'QUERY': QUERY,
                 'POSITION': POSITION,
@@ -74,12 +68,13 @@ def insert_data(cursor, data):
                 'CLICKS': CLICKS,
                 'CTR': CTR
             })
-    
     temp_data = pd.DataFrame(temp_data)
-    aggregated_data = temp_data.groupby(['DATE', 'QUERY']).sum().reset_index()
+    aggregated_data = temp_data.groupby(['URL', 'DATE', 'QUERY']).sum().reset_index()
+    condition = (aggregated_data['DEMAND'] > 0)
+    aggregated_data.loc[condition, 'POSITION'] = aggregated_data['POSITION'].replace(0.00, 101.00)
+	
     return aggregated_data
 
-# Подключение к базе данных
 try:
     conn = mariadb.connect(
         host=db_host,
@@ -89,53 +84,90 @@ try:
         database=db_name
     )
     cursor = conn.cursor()
-
-    # Проверка наличия и создание таблицы
     create_table(cursor)
 
-    offset = 0
-
+    offset_url = 0
+    limit_url = 100
+    url_list = []
+    
+    # Получаем список URL
     while True:
-        # Выполнение запроса к API
-        request_body = {
-            "offset": offset,
-            "limit": 100,
+        request_url_body = {
+            "offset": offset_url,
+            "limit": limit_url,
             "device_type_indicator": "ALL",
-            "text_indicator": "QUERY",
-            "region_ids": [225],
+            "text_indicator": "URL",
+            "region_ids": [11079],
             "filters": {
                 "text_filters": [
-                    {"text_indicator": "QUERY", "operation": "TEXT_CONTAINS", "value": ""}
+                    {"text_indicator": "URL", "operation": "TEXT_CONTAINS", "value": ""}
                 ]
             }
         }
-        api_response = api_request(api_url, headers, request_body)
 
-        # Вставка данных в таблицу и агрегирование с использованием pandas
-        aggregated_data = insert_data(cursor, api_response)
-
-        # Запись данных в таблицу
-        query = f"INSERT IGNORE INTO {table_name} (DATE, QUERY, POSITION, DEMAND, IMPRESSIONS, CLICKS, CTR) " \
-                f"VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        data_to_insert = [(row.DATE, row.QUERY, row.POSITION, row.DEMAND, row.IMPRESSIONS, row.CLICKS, row.CTR)
-                          for row in aggregated_data.itertuples()]
-        cursor.executemany(query, data_to_insert)
-
-        if offset - (api_response['count'] - (api_response['count'] % 100)) < 0:
-        # Увеличение значения offset на 100 или 1
-            offset += 100
-        else:
-            offset += 1
-
-        # Проверка условия выхода из цикла
-        if offset == api_response['count'] - 1:
-            break
-
-        # Сохранение изменений и закрытие соединения
-        conn.commit()
+        api_url_response = api_request(api_url, headers, request_url_body)
+        url_list.extend([item['text_indicator']['value'] for item in api_url_response['text_indicator_to_statistics']])
         
-    conn.close()
+        print(f"offset_url {offset_url}")
+        print(f"limit_url {limit_url}")
+        print(f"count {api_url_response['count']}")
+        if offset_url - (api_url_response['count'] - (api_url_response['count'] % 100)) < 0 and api_url_response['count'] > 99:
+            limit_url = 100
+            offset_url += 100
+        else:	
+            break
+        
+        if offset_url >= api_url_response['count'] - 1:
+            break
+			
+    print(url_list)
+    for url in url_list:
+        print(url)	
+        add_url = url
+        offset_query = 0
+        limit_query = 100
+        query_data_list = []
+        
+        # Получаем данные QUERY для каждого URL 
+        while True:
+            request_query_body = {
+                "offset": offset_query,
+                "limit": limit_query,
+                "device_type_indicator": "ALL",
+                "text_indicator": "QUERY",
+                "region_ids": [11079],
+                "filters": {
+                    "text_filters": [
+                        {"text_indicator": "URL", "operation": "TEXT_MATCH", "value": url}
+                    ]
+                }
+            }
+            
+            api_query_response = api_request(api_url, headers, request_query_body)
+            query_data_list.extend(api_query_response['text_indicator_to_statistics'])
+            
+            print(api_query_response['count'])
+            print(offset_query - (api_query_response['count'] - (api_query_response['count'] % 100)))
+            if offset_query - (api_query_response['count'] - (api_query_response['count'] % 100)) < 0 and api_query_response['count'] > 99:
+                limit_query = 100
+                offset_query += 100
+            else:	
+                break
+            
+            if offset_query >= api_query_response['count'] - 1:
+                break
+        		
+        # Агрегируем данные и записываем в БД
+        query_data = insert_data(cursor, {'text_indicator_to_statistics': query_data_list})
+        data_to_insert = [(row.URL, row.DATE, row.QUERY, row.POSITION, row.DEMAND, row.IMPRESSIONS, row.CLICKS, row.CTR)
+                          for row in query_data.itertuples()]
+        query = f"INSERT IGNORE INTO {table_name} (URL, DATE, QUERY, POSITION, DEMAND, IMPRESSIONS, CLICKS, CTR) " \
+                f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+        cursor.executemany(query, data_to_insert)
+        conn.commit()
     
-    print(f"{current_time} - Успешно!")
+    conn.close()
+    print(f"{current_time} - {sys.argv[0]} - Успешно!")
+
 except mariadb.Error as e:
-    print(f"{current_time} - Ошибка при работе с базой данных: {e}")
+    print(f"{current_time} - {sys.argv[0]} - Ошибка базы данных: {e}")
