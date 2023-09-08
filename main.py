@@ -15,7 +15,9 @@ db_port = 3306
 db_user = 'your_username'
 db_password = 'your_password'
 db_name = 'your_database'
-table_name = 'aggr'
+table_name = 'aggregate'
+region_id_var = 11079 # 225 - РФ, 1 - Мск и МО, 10174 - Спб и ЛО, 11079 - НН и НО
+device_type_indicator_var = "ALL" # "DESKTOP", "MOBILE_AND_TABLET", "MOBILE"
 
 def api_request(url, headers, body):
     response = requests.post(url, headers=headers, json=body)
@@ -70,6 +72,8 @@ def insert_data(cursor, data):
             })
     temp_data = pd.DataFrame(temp_data)
     aggregated_data = temp_data.groupby(['URL', 'DATE', 'QUERY']).sum().reset_index()
+	
+    # Замена нулевых значений POSITION при условии, что DEMAND больше нуля
     condition = (aggregated_data['DEMAND'] > 0)
     aggregated_data.loc[condition, 'POSITION'] = aggregated_data['POSITION'].replace(0.00, 101.00)
 	
@@ -95,9 +99,9 @@ try:
         request_url_body = {
             "offset": offset_url,
             "limit": limit_url,
-            "device_type_indicator": "ALL",
+            "device_type_indicator": device_type_indicator_var,
             "text_indicator": "URL",
-            "region_ids": [11079],
+            "region_ids": [region_id_var],
             "filters": {
                 "text_filters": [
                     {"text_indicator": "URL", "operation": "TEXT_CONTAINS", "value": ""}
@@ -108,9 +112,6 @@ try:
         api_url_response = api_request(api_url, headers, request_url_body)
         url_list.extend([item['text_indicator']['value'] for item in api_url_response['text_indicator_to_statistics']])
         
-        print(f"offset_url {offset_url}")
-        print(f"limit_url {limit_url}")
-        print(f"count {api_url_response['count']}")
         if offset_url - (api_url_response['count'] - (api_url_response['count'] % 100)) < 0 and api_url_response['count'] > 99:
             limit_url = 100
             offset_url += 100
@@ -119,10 +120,8 @@ try:
         
         if offset_url >= api_url_response['count'] - 1:
             break
-			
-    print(url_list)
+
     for url in url_list:
-        print(url)	
         add_url = url
         offset_query = 0
         limit_query = 100
@@ -133,9 +132,9 @@ try:
             request_query_body = {
                 "offset": offset_query,
                 "limit": limit_query,
-                "device_type_indicator": "ALL",
+                "device_type_indicator": device_type_indicator_var,
                 "text_indicator": "QUERY",
-                "region_ids": [11079],
+                "region_ids": [region_id_var],
                 "filters": {
                     "text_filters": [
                         {"text_indicator": "URL", "operation": "TEXT_MATCH", "value": url}
@@ -146,8 +145,6 @@ try:
             api_query_response = api_request(api_url, headers, request_query_body)
             query_data_list.extend(api_query_response['text_indicator_to_statistics'])
             
-            print(api_query_response['count'])
-            print(offset_query - (api_query_response['count'] - (api_query_response['count'] % 100)))
             if offset_query - (api_query_response['count'] - (api_query_response['count'] % 100)) < 0 and api_query_response['count'] > 99:
                 limit_query = 100
                 offset_query += 100
