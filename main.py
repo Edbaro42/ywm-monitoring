@@ -120,12 +120,6 @@ try:
         # Вставка данных в таблицу и агрегирование с использованием pandas
         aggregated_data = insert_data(cursor, api_response)
 
-        if api_response['count'] > 100:
-            limit = 100
-            offset += 100
-        else:
-            break
-
         # Запись данных в таблицу
         query = f"INSERT IGNORE INTO {table_name} (DATE, QUERY, POSITION, DEMAND, IMPRESSIONS, CLICKS, CTR) " \
                 f"VALUES (%s, %s, %s, %s, %s, %s, %s)"
@@ -134,6 +128,12 @@ try:
         cursor.executemany(query, data_to_insert)
         # Сохранение изменений и закрытие соединения
         conn.commit()
+
+        if api_response['count'] > 100:
+            limit = 100
+            offset += 100
+        else:
+            break
 		
         # Проверка условия выхода из цикла
         if offset > api_response['count']:
