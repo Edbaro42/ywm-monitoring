@@ -14,7 +14,7 @@ db_port = 3306
 db_user = 'your_username'
 db_password = 'your_password'
 db_name = 'your_database'
-table_name = 'queries'
+table_name = 'urls'
 region_id_var = 1 # 225 - РФ, 1 - Мск и МО, 10174 - Спб и ЛО, 11079 - НН и НО
 device_type_indicator_var = "MOBILE_AND_TABLET" # "DESKTOP", "MOBILE_AND_TABLET", "MOBILE"
 
@@ -31,13 +31,12 @@ def create_table(cursor):
     cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ("
                    "ID INT AUTO_INCREMENT PRIMARY KEY,"
                    "DATE DATE,"
-                   "QUERY VARCHAR(100),"
+                   "URL VARCHAR(100),"
                    "POSITION DECIMAL(14, 2),"
-                   "DEMAND DECIMAL(14, 2),"
                    "IMPRESSIONS DECIMAL(14, 2),"
                    "CLICKS DECIMAL(14, 2),"
                    "CTR DECIMAL(14, 2),"
-                   "CONSTRAINT unique_date_query UNIQUE (DATE, QUERY)"
+                   "CONSTRAINT unique_date_URLS UNIQUE (DATE, URL)"
                    ")")
 
 # Функция для вставки данных в таблицу
@@ -45,18 +44,15 @@ def insert_data(cursor, data):
     temp_data = []
     
     for item in data['text_indicator_to_statistics']:
-        QUERY = item['text_indicator']['value']
+        URLS = item['text_indicator']['value']
         for stat in item['statistics']:
             DATE = stat['date']
-            DEMAND = 0.0
             CLICKS = 0.0
             CTR = 0.0
             IMPRESSIONS = 0.0
             POSITION = 0.0
             
-            if stat['field'] == 'DEMAND':
-                DEMAND = round(float(stat['value']), 2)
-            elif stat['field'] == 'CLICKS':
+            if stat['field'] == 'CLICKS':
                 CLICKS = round(float(stat['value']), 2)
             elif stat['field'] == 'CTR':
                 CTR = round(float(stat['value']), 2)
@@ -67,20 +63,15 @@ def insert_data(cursor, data):
             
             temp_data.append({
                 'DATE': DATE,
-                'QUERY': QUERY,
+                'URL': URLS,
                 'POSITION': POSITION,
-                'DEMAND': DEMAND,
                 'IMPRESSIONS': IMPRESSIONS,
                 'CLICKS': CLICKS,
                 'CTR': CTR
             })
     
     temp_data = pd.DataFrame(temp_data)
-    aggregated_data = temp_data.groupby(['DATE', 'QUERY']).sum().reset_index()
-    
-    # Замена нулевых значений POSITION при условии, что DEMAND больше нуля
-    condition = (aggregated_data['DEMAND'] > 0)
-    aggregated_data.loc[condition, 'POSITION'] = aggregated_data['POSITION'].replace(0.00, 101.00)
+    aggregated_data = temp_data.groupby(['DATE', 'URL']).sum().reset_index()
     
     return aggregated_data
 
@@ -99,19 +90,18 @@ try:
     create_table(cursor)
 
     offset = 0
-    limit = 100
 
     while True:
         # Выполнение запроса к API
         request_body = {
             "offset": offset,
-            "limit": limit,
+            "limit": 100,
             "device_type_indicator": device_type_indicator_var,
-            "text_indicator": "QUERY",
+            "text_indicator": "URL",
             "region_ids": [region_id_var],
             "filters": {
                 "text_filters": [
-                    {"text_indicator": "QUERY", "operation": "TEXT_CONTAINS", "value": ""}
+                    {"text_indicator": "URL", "operation": "TEXT_CONTAINS", "value": ""}
                 ]
             }
         }
@@ -125,20 +115,20 @@ try:
             offset += 100
         else:
             break
-
+			
         # Запись данных в таблицу
-        query = f"INSERT IGNORE INTO {table_name} (DATE, QUERY, POSITION, DEMAND, IMPRESSIONS, CLICKS, CTR) " \
-                f"VALUES (%s, %s, %s, %s, %s, %s, %s)"
-        data_to_insert = [(row.DATE, row.QUERY, row.POSITION, row.DEMAND, row.IMPRESSIONS, row.CLICKS, row.CTR)
+        urls = f"INSERT IGNORE INTO {table_name} (DATE, URL, POSITION, IMPRESSIONS, CLICKS, CTR) " \
+                f"VALUES (%s, %s, %s, %s, %s, %s)"
+        data_to_insert = [(row.DATE, row.URL, row.POSITION, row.IMPRESSIONS, row.CLICKS, row.CTR)
                           for row in aggregated_data.itertuples()]
-        cursor.executemany(query, data_to_insert)
+        cursor.executemany(urls, data_to_insert)
         # Сохранение изменений и закрытие соединения
         conn.commit()
-		
+
         # Проверка условия выхода из цикла
         if offset > api_response['count']:
             break
-        
+       
     conn.close()
     
     print(f"{current_time} - {sys.argv[0]} - Успешно!")
