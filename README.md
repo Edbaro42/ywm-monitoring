@@ -39,7 +39,6 @@
 	&nbsp; &nbsp; condition = (aggregated_data[&#39;DEMAND&#39;] &gt; 0)<br />
 	&nbsp; &nbsp; aggregated_data.loc[condition, &#39;POSITION&#39;] = aggregated_data[&#39;POSITION&#39;].replace(0.00, 101.00)</li>
 	<li>Стала работать региональность. Можно выбрать регион. Правда работают только те регионы, которые указаны в документации:&nbsp;https://yandex.ru/dev/webmaster/doc/dg/reference/host-query-analytics.html#request-format__region-ids.<br />
-	Сменить регион можно путем исправления значения в двух одинаковых строчках кода:<br />
-	&quot;region_ids&quot;: [*****]</li>
+	Сменить регион и устройство можно в переменных в начале кода</li>
 	<li>Замечено, что логика работы API меняется буквально каждый день (не зря она в бете). Поэтому работоспособность может нарушаться тем сильнее, чем больше времени пройдет с момента публикования данного скрипта.&nbsp;</li>
 </ol>
