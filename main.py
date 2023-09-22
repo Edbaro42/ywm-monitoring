@@ -81,7 +81,7 @@ def insert_data(cursor, data):
 	
     # Замена нулевых значений POSITION при условии, что DEMAND больше нуля
     condition = (aggregated_data['DEMAND'] > 0)
-    aggregated_data.loc[condition, 'POSITION'] = aggregated_data['POSITION'].replace(0.00, 101.00)
+    aggregated_data.loc[condition, 'POSITION'] = aggregated_data['POSITION'].replace(0.00, 51.00)
 	
     return aggregated_data
 
