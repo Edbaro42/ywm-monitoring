@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import sys
+import time
 
 timezone = pytz.timezone("Europe/Moscow")
 current_time = datetime.now(timezone)
@@ -19,11 +20,17 @@ region_id_var = 1 # 225 - РФ, 1 - Мск и МО, 10174 - Спб и ЛО, 1107
 device_type_indicator_var = "MOBILE_AND_TABLET" # "DESKTOP", "MOBILE_AND_TABLET", "MOBILE"
 
 def api_request(url, headers, body):
-    response = requests.post(url, headers=headers, json=body)
-    if response.status_code != 200:
-        print(f"{current_time} - {sys.argv[0]} - Ответ API: {response.status_code}")
-        sys.exit()
-    return response.json()
+    while True:
+        response = requests.post(url, headers=headers, json=body)
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 504:
+            print(f"{current_time} - {sys.argv[0]} - Ответ API: {response.status_code}. Повторная попытка через 1 минуту...")
+            time.sleep(60)  # Засыпаем на 1 минуту
+            print(f"{current_time} - {sys.argv[0]} - Повторяем попытку...")			
+        else:
+            print(f"{current_time} - {sys.argv[0]} - Ответ API: {response.status_code}")
+            sys.exit()
 
 def create_table(cursor):
     cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ("
@@ -164,6 +171,9 @@ try:
    
     conn.close()
     print(f"{current_time} - {sys.argv[0]} - Успешно!")
+
+except mariadb.Error as e:
+    print(f"{current_time} - {sys.argv[0]} - Ошибка базы данных: {e}")
 
 except mariadb.Error as e:
     print(f"{current_time} - {sys.argv[0]} - Ошибка базы данных: {e}")
