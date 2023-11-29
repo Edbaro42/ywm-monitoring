@@ -174,6 +174,3 @@ try:
 
 except mariadb.Error as e:
     print(f"{current_time} - {sys.argv[0]} - Ошибка базы данных: {e}")
-
-except mariadb.Error as e:
-    print(f"{current_time} - {sys.argv[0]} - Ошибка базы данных: {e}")
